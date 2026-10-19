@@ -50,4 +50,9 @@ with tempfile.TemporaryDirectory() as directory:
             process.kill()
             process.wait()
     assert subprocess.run([binary, '--continuous', '--duration-seconds', '2'], capture_output=True).returncode != 0
-print('PASS: bounded histogram/counts, Prometheus export, continuous publication, SIGTERM, option validation')
+    failed_output = subprocess.run(
+        [binary, '--continuous', '--textfile', str(pathlib.Path(directory) / 'missing' / 'metrics.prom')],
+        capture_output=True, timeout=15,
+    )
+    assert failed_output.returncode != 0
+print('PASS: bounded histogram/counts, Prometheus export, continuous publication, SIGTERM, output failure, option validation')

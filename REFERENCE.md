@@ -33,6 +33,7 @@ python3 tests/check.py target/release/wakeup-latency
 
 Python and promtool are test tools, not runtime dependencies.
 The executable uses libc and serde_json; it has no async runtime or HTTP server.
+Unit tests check histogram boundaries, percentile ranks, cumulative counts, and deadline advancement using fixed inputs.
 The live checks exercise real sampling, JSON and Prometheus count agreement, continuous publication, and graceful shutdown.
 
 ## Removing the service
