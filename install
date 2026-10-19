@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Run as a normal user. The argument is node_exporter's configured textfile directory.
+set -euo pipefail
+(( EUID != 0 )) || { echo 'Run as your normal user; sudo is used only where required.' >&2; exit 1; }
+[[ $# == 1 && "$1" == /* && -d "$1" ]] || {
+    echo "Usage: bash install /absolute/path/to/node-exporter/textfiles" >&2
+    exit 1
+}
+directory=$(cd -- "$(dirname -- "$0")" && pwd)
+binary="$directory/target/release/wakeup-latency"
+[[ -x "$binary" ]] || { echo 'First run: cargo build --release --locked' >&2; exit 1; }
+link="$1/wakeup-latency.prom"
+if [[ -e "$link" || -L "$link" ]]; then
+    [[ -L "$link" && "$(readlink "$link")" == /run/wakeup-latency/metrics.prom ]] || {
+        echo "Refusing to replace an unrelated metrics file: $link" >&2
+        exit 1
+    }
+fi
+"$binary" --help >/dev/null
+sudo -v
+sudo install -m 0755 "$binary" /usr/local/bin/wakeup-latency
+sudo install -D -m 0644 "$directory/README.md" /usr/local/share/doc/wakeup-latency/README.md
+sudo install -m 0644 "$directory/REFERENCE.md" /usr/local/share/doc/wakeup-latency/REFERENCE.md
+sudo systemd-analyze verify "$directory/systemd/wakeup-latency.service"
+sudo install -m 0644 "$directory/systemd/wakeup-latency.service" /etc/systemd/system/wakeup-latency.service
+sudo ln -sfn /run/wakeup-latency/metrics.prom "$link"
+sudo systemctl daemon-reload
+sudo systemctl restart wakeup-latency.service
+for attempt in {1..15}; do
+    [[ -s /run/wakeup-latency/metrics.prom ]] && break
+    sleep 1
+done
+if ! systemctl is-active --quiet wakeup-latency.service || [[ ! -s /run/wakeup-latency/metrics.prom ]]; then
+    echo 'Collector failed to publish; inspect journalctl -u wakeup-latency.' >&2
+    exit 1
+fi
+if command -v promtool >/dev/null; then
+    promtool check metrics < /run/wakeup-latency/metrics.prom
+fi
+sudo systemctl enable wakeup-latency.service
+echo 'Installed. Metrics update every five seconds.'
+echo 'Quick check: wakeup-latency --duration-seconds 60'
+echo 'Status: systemctl status wakeup-latency'
